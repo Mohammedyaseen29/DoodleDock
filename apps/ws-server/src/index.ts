@@ -5,7 +5,6 @@ import { JWT_SECRET } from '@repo/common-config/config'
 import { IncomingMessage } from 'http'
 import { parse } from 'url'
 
-// Enhanced room structure to handle canvas data
 interface CanvasRoom {
     clients: Array<{
         ws: WebSocket & { userId?: string; roomId?: string; userEmail?: string };
@@ -13,13 +12,12 @@ interface CanvasRoom {
         userEmail: string;
         cursor?: { x: number; y: number };
     }>;
-    shapes: any[]; // Store current canvas state
+    shapes: any[]; 
     lastUpdate: number;
 }
 
 const rooms: Record<string, CanvasRoom> = {};
 
-// Throttle updates to maintain 30fps (33ms intervals)
 const THROTTLE_INTERVAL = 33;
 const pendingBroadcasts: Record<string, any> = {};
 
@@ -35,10 +33,10 @@ const wss = new WebSocketServer({
                 return false;
             }
 
-            // Verify JWT token
-            const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+        
+            const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; userEmail: string };
 
-            // Verify user exists in database
+            
             const user = await db.user.findUnique({
                 where: { id: decoded.userId }
             });
@@ -48,7 +46,7 @@ const wss = new WebSocketServer({
                 return false;
             }
 
-            // Store user info in the request for later use
+            
             (info.req as any).userId = user.id;
             (info.req as any).userEmail = user.email;
 
@@ -61,7 +59,6 @@ const wss = new WebSocketServer({
 });
 
 wss.on('connection', (ws: WebSocket & { userId?: string; roomId?: string; userEmail?: string }, req: IncomingMessage) => {
-    // Get user info from the verified request
     const userId = (req as any).userId;
     const userEmail = (req as any).userEmail;
 
@@ -368,5 +365,3 @@ function throttledBroadcast(roomId: string, message: any, sender?: WebSocket, in
     }, interval);
 }
 
-console.log('Authenticated WebSocket server running on port 8080');
-console.log('Clients must provide valid JWT token as query parameter: ws://localhost:8080?token=<jwt_token>');

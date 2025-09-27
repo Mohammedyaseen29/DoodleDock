@@ -102,9 +102,45 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
         setConnectionStatus('connecting');
 
         // Generate JWT token for WebSocket authentication
-        const wsUrl = `ws://localhost:8080?userId=${session.user.id}&userEmail=${session.user.email}`;
+        const createWebSocketToken = async () => {
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ws-token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: session.user.id,
+                        userEmail: session.user.email
+                    })
+                });
 
-        const ws = new WebSocket(wsUrl);
+                if (!response.ok) {
+                    throw new Error('Failed to get WebSocket token');
+                }
+
+                const data = await response.json();
+                return data.token;
+            } catch (error) {
+                console.error('Error getting WebSocket token:', error);
+                throw error;
+            }
+        };
+        createWebSocketToken()
+            .then((token) => {
+                const wsUrl = `ws://localhost:8080?token=${token}`;
+                const ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    setConnectionStatus('connected');
+
+                    // Join the room
+                    ws.send(JSON.stringify({
+                        type: 'join',
+                        roomName: roomId
+                    }));
+                };
 
         ws.onopen = () => {
             console.log('WebSocket connected');
@@ -179,6 +215,10 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
         };
 
         wsRef.current = ws;
+            })
+            .catch((error) => {
+                setConnectionStatus('disconnected');
+            });
     }, [session, isInRoom, roomId]);
 
     // =====================

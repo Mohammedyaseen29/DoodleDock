@@ -16,7 +16,7 @@ datasource db {
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
-  // password  String
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   rooms     Room[]
@@ -30,6 +30,8 @@ model Room{
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   chats     Chat[]
+  canvasStates CanvasState[] 
+  @@map("rooms")
 }
 
 model Chat{
@@ -40,4 +42,16 @@ model Chat{
   user     User     @relation(fields: [userId], references: [id])
   roomId   String
   room     Room     @relation(fields: [roomId], references: [id])
+}
+
+model CanvasState {
+  id        String   @id @default(cuid())
+  roomId    String
+  shapes    Json     // Store the shapes array as JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  
+  @@map("canvas_states")
 }
