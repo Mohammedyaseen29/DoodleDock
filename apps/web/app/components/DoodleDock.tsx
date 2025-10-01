@@ -96,129 +96,107 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
     // =====================
     // WEBSOCKET CONNECTION
     // =====================
-    const connectWebSocket = useCallback(() => {
+    const connectWebSocket = useCallback(async () => {
         if (!session?.user?.id || !isInRoom || !roomId) return;
 
         setConnectionStatus('connecting');
 
-        // Generate JWT token for WebSocket authentication
-        const createWebSocketToken = async () => {
-            try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/ws-token`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        userId: session.user.id,
-                        userEmail: session.user.email
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to get WebSocket token');
+        try {
+            // Generate JWT token for WebSocket authentication using our new API
+            const response = await fetch('/api/ws-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
                 }
-
-                const data = await response.json();
-                return data.token;
-            } catch (error) {
-                console.error('Error getting WebSocket token:', error);
-                throw error;
-            }
-        };
-        createWebSocketToken()
-            .then((token) => {
-                const wsUrl = `ws://localhost:8080?token=${token}`;
-                const ws = new WebSocket(wsUrl);
-
-                ws.onopen = () => {
-                    console.log('WebSocket connected');
-                    setConnectionStatus('connected');
-
-                    // Join the room
-                    ws.send(JSON.stringify({
-                        type: 'join',
-                        roomName: roomId
-                    }));
-                };
-
-        ws.onopen = () => {
-            console.log('WebSocket connected');
-            setConnectionStatus('connected');
-
-            // Join the room
-            ws.send(JSON.stringify({
-                type: 'join',
-                roomName: roomId
-            }));
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-
-                switch (data.type) {
-                    case 'canvas-state':
-                        setShapes(data.shapes || []);
-                        break;
-
-                    case 'canvas-draw':
-                        if (data.isComplete) {
-                            setShapes(prev => [...prev, data.shape]);
-                        }
-                        break;
-
-                    case 'canvas-clear':
-                        setShapes([]);
-                        break;
-
-                    case 'canvas-delete':
-                        setShapes(prev => prev.filter((_, index) => !data.shapeIndices.includes(index)));
-                        break;
-
-                    case 'canvas-undo':
-                    case 'canvas-redo':
-                        setShapes(data.shapes || []);
-                        break;
-
-                    case 'user-joined':
-                    case 'user-left':
-                        // Handle user presence updates
-                        break;
-
-                    case 'cursor-move':
-                        setConnectedUsers(prev => {
-                            const updated = prev.filter(u => u.userId !== data.userId);
-                            updated.push({
-                                userId: data.userId,
-                                userEmail: data.userEmail,
-                                cursor: { x: data.x, y: data.y }
-                            });
-                            return updated;
-                        });
-                        break;
-                }
-            } catch (error) {
-                console.error('Error parsing WebSocket message:', error);
-            }
-        };
-
-        ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            setConnectionStatus('disconnected');
-            wsRef.current = null;
-        };
-
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            setConnectionStatus('disconnected');
-        };
-
-        wsRef.current = ws;
-            })
-            .catch((error) => {
-                setConnectionStatus('disconnected');
             });
+
+            if (!response.ok) {
+                throw new Error('Failed to get WebSocket token');
+            }
+
+            const data = await response.json();
+            const token = data.token;
+
+            const wsUrl = `ws://localhost:8080?token=${token}`;
+            const ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                setConnectionStatus('connected');
+
+                // Join the room
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    roomName: roomId
+                }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    switch (data.type) {
+                        case 'canvas-state':
+                            setShapes(data.shapes || []);
+                            break;
+
+                        case 'canvas-draw':
+                            if (data.isComplete) {
+                                setShapes(prev => [...prev, data.shape]);
+                            }
+                            break;
+
+                        case 'canvas-clear':
+                            setShapes([]);
+                            break;
+
+                        case 'canvas-delete':
+                            setShapes(prev => prev.filter((_, index) => !data.shapeIndices.includes(index)));
+                            break;
+
+                        case 'canvas-undo':
+                        case 'canvas-redo':
+                            setShapes(data.shapes || []);
+                            break;
+
+                        case 'user-joined':
+                        case 'user-left':
+                            // Handle user presence updates
+                            break;
+
+                        case 'cursor-move':
+                            setConnectedUsers(prev => {
+                                const updated = prev.filter(u => u.userId !== data.userId);
+                                updated.push({
+                                    userId: data.userId,
+                                    userEmail: data.userEmail,
+                                    cursor: { x: data.x, y: data.y }
+                                });
+                                return updated;
+                            });
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                setConnectionStatus('disconnected');
+                wsRef.current = null;
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                setConnectionStatus('disconnected');
+            };
+
+            wsRef.current = ws;
+        } catch (error) {
+            console.error('Error connecting to WebSocket:', error);
+            setConnectionStatus('disconnected');
+        }
     }, [session, isInRoom, roomId]);
 
     // =====================
@@ -551,23 +529,6 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
     };
 
     // =====================
-    // KEYBOARD SHORTCUTS
-    // =====================
-    useEffect(() => {
-        function handleKeyDown(e: KeyboardEvent) {
-            if (e.key === "Backspace") {
-                deleteSelected();
-            } else if (e.ctrlKey && e.key === "z") {
-                handleUndo();
-            } else if (e.ctrlKey && e.shiftKey && e.key === "Z") {
-                handleRedo();
-            }
-        }
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedShapes, undoStack, redoStack]);
-
-    // =====================
     // UNDO & REDO
     // =====================
     function handleUndo() {
@@ -603,6 +564,23 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
     }
 
     // =====================
+    // KEYBOARD SHORTCUTS
+    // =====================
+    useEffect(() => {
+        function handleKeyDown(e: KeyboardEvent) {
+            if (e.key === "Backspace") {
+                deleteSelected();
+            } else if (e.ctrlKey && e.key === "z") {
+                handleUndo();
+            } else if (e.ctrlKey && e.shiftKey && e.key === "Z") {
+                handleRedo();
+            }
+        }
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [selectedShapes, undoStack, redoStack]);
+
+    // =====================
     // UI
     // =====================
     return (
@@ -611,8 +589,8 @@ export default function CanvasBoard({ roomId, isInRoom = false }: CanvasProps) {
             {isInRoom && (
                 <div className="mb-4 text-sm">
                     Status: <span className={`font-bold ${connectionStatus === 'connected' ? 'text-green-600' :
-                            connectionStatus === 'connecting' ? 'text-yellow-600' :
-                                'text-red-600'
+                        connectionStatus === 'connecting' ? 'text-yellow-600' :
+                            'text-red-600'
                         }`}>
                         {connectionStatus.toUpperCase()}
                     </span>

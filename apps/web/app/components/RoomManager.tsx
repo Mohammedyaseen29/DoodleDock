@@ -27,25 +27,24 @@ export default function RoomManager({
         setError("")
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/room`, {
+            const response = await fetch('/api/room', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    roomName: roomName.trim(),
-                    userId: session.user.id
+                    roomName: roomName.trim()
                 })
             })
 
+            const data = await response.json()
+
             if (response.ok) {
-                const room = await response.json()
-                setCurrentRoom(room.name)
+                setCurrentRoom(data.name)
                 setIsInRoom(true)
                 setRoomName("")
             } else {
-                const errorText = await response.text()
-                setError(errorText || 'Failed to create room')
+                setError(data.error || 'Failed to create room')
             }
         } catch (err) {
             setError('Network error occurred')
@@ -61,7 +60,7 @@ export default function RoomManager({
         setError("")
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/room/${joinRoomName.trim()}`)
+            const response = await fetch(`/api/room/name/${joinRoomName.trim()}`)
 
             if (response.ok) {
                 const room = await response.json()
@@ -69,7 +68,8 @@ export default function RoomManager({
                 setIsInRoom(true)
                 setJoinRoomName("")
             } else {
-                setError('Room not found')
+                const data = await response.json()
+                setError(data.error || 'Room not found')
             }
         } catch (err) {
             setError('Network error occurred')

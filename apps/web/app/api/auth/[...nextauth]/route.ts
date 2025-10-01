@@ -1,6 +1,7 @@
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { NextAuthOptions } from "next-auth"
+import { db } from "@repo/db/client"
 
 const authOptions: NextAuthOptions = {
     providers: [
@@ -9,28 +10,39 @@ const authOptions: NextAuthOptions = {
             clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
         })
     ],
+    secret:process.env.NEXTAUTH_SECRET,
     callbacks: {
         async signIn({ user, account, profile }) {
             if (account?.provider === "google") {
                 try {
-                    // Register/login user with your backend
-                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/register`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            email: user.email,
-                            name: user.name,
-                            image: user.image,
-                        }),
+                    // Check if user exists
+                    const existingUser = await db.user.findFirst({
+                        where: { email: user.email! }
                     });
 
-                    if (response.ok) {
-                        const data = await response.json();
-                        user.id = data.userId;
-                        return true;
+                    if (!existingUser) {
+                        // Create new user
+                        const newUser = await db.user.create({
+                            data: {
+                                email: user.email!,
+                                name: user.name,
+                                image: user.image
+                            }
+                        });
+                        user.id = newUser.id;
+                    } else {
+                        // Update existing user info if needed
+                        await db.user.update({
+                            where: { id: existingUser.id },
+                            data: {
+                                name: user.name,
+                                image: user.image
+                            }
+                        });
+                        user.id = existingUser.id;
                     }
+
+                    return true;
                 } catch (error) {
                     console.error('Error during sign in:', error);
                     return false;
@@ -57,7 +69,7 @@ const authOptions: NextAuthOptions = {
     pages: {
         signIn: '/auth/signin',
     },
-}
+}   
 
 const handler = NextAuth(authOptions)
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST, authOptions }
