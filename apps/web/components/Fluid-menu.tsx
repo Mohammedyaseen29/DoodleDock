@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { ChevronDown } from "lucide-react"
 
+
 interface MenuProps {
     trigger: React.ReactNode
     children: React.ReactNode
@@ -11,7 +12,8 @@ interface MenuProps {
 }
 
 export function Menu({ trigger, children, align = "left", showChevron = true }: MenuProps) {
-    const [isOpen, setIsOpen] = useState(false)
+    const [isOpen, setIsOpen] = useState(false);
+    
 
     return (
         <div className="relative inline-block text-left">
@@ -59,7 +61,7 @@ export function MenuItem({ children, onClick, disabled = false, icon, isActive =
             className={`relative block w-full h-16 text-center group
         ${disabled ? "text-gray-400 dark:text-gray-500 cursor-not-allowed" : "text-gray-600 dark:text-gray-300"}
         ${isActive ? "bg-white/10" : ""}
-      `}
+    `}
             role="menuitem"
             onClick={onClick}
             disabled={disabled}

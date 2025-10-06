@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@prisma/client": "6.4.1",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-slot": "^1.2.3",
     "@repo/common-config": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/ui": "workspace:*",
@@ -28,7 +30,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.1",
-    "tailwindcss": "^4.1.13"
+    "tailwindcss": "^4.1.13",
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@repo/eslint-config": "workspace:*",

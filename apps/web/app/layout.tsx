@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
-import AuthProvider from "../app/components/AuthProvider"
+import AuthProvider from "@/components/AuthProvider";
+import { SignInDialog } from "@/components/modals/SignIn";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <AuthProvider>
           {children}
+          <SignInDialog/>
         </AuthProvider>
       </body>
     </html>

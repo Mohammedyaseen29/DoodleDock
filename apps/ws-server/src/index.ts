@@ -100,7 +100,7 @@ wss.on('connection', (ws: WebSocket & { userId?: string; roomId?: string; userEm
 
                     //@ts-ignore
                     const existingClient = rooms[room.id].clients.find(client => client.userId === ws.userId);
-                    if (existingClient) {
+                    if (existingClient) {   
                         // Close the old connection
                         existingClient.ws.close();
                         //@ts-ignore
@@ -365,3 +365,4 @@ function throttledBroadcast(roomId: string, message: any, sender?: WebSocket, in
     }, interval);
 }
 
+    

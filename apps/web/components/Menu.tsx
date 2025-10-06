@@ -1,10 +1,12 @@
 "use client"
 
-import { MenuItem, MenuContainer } from "./Fluid-menu"
-import { Menu as MenuIcon, X, Home, Mail, User, Settings } from "lucide-react"
+import { MenuItem,MenuContainer } from "@/components/Fluid-menu"
+import { Menu as MenuIcon, X, Home,Settings, Zap, LogIn } from "lucide-react"
+import { useDialogStore } from "@/store/dialog-store"
 
 // A fluid circular menu that elegantly expands to reveal navigation items with smooth icon transitions
 export function DoodleMenu() {
+    const setOpenDialog = useDialogStore((state) => state.setOpenDialog);
     return (
         <div className="flex flex-col items-center gap-8 p-8">
             <div className="relative">
@@ -23,8 +25,8 @@ export function DoodleMenu() {
                         }
                     />
                     <MenuItem icon={<Home size={24} strokeWidth={1.5} />} />
-                    <MenuItem icon={<Mail size={24} strokeWidth={1.5} />} />
-                    <MenuItem icon={<User size={24} strokeWidth={1.5} />} />
+                    <MenuItem icon={<Zap size={24} strokeWidth={1.5} />} />
+                    <MenuItem icon={<LogIn size={24} strokeWidth={1.5} onClick={() => setOpenDialog("signIn")}/>} />
                     <MenuItem icon={<Settings size={24} strokeWidth={1.5} />} />
                 </MenuContainer>
             </div>
