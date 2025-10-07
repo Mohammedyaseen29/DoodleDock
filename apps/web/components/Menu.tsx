@@ -1,11 +1,17 @@
 "use client"
 
 import { MenuItem,MenuContainer } from "@/components/Fluid-menu"
-import { Menu as MenuIcon, X, Home,Settings, Zap, LogIn } from "lucide-react"
-import { useDialogStore } from "@/store/dialog-store"
+import { Menu as MenuIcon, X, Home,Settings, Zap, LogIn, LogOut } from "lucide-react"
+import { useDialogStore } from "@/store/dialog-store";
+import { useSession } from "next-auth/react";
+
+
+
 
 // A fluid circular menu that elegantly expands to reveal navigation items with smooth icon transitions
 export function DoodleMenu() {
+
+    const {data} = useSession();
     const setOpenDialog = useDialogStore((state) => state.setOpenDialog);
     return (
         <div className="flex flex-col items-center gap-8 p-8">
@@ -26,7 +32,7 @@ export function DoodleMenu() {
                     />
                     <MenuItem icon={<Home size={24} strokeWidth={1.5} />} />
                     <MenuItem icon={<Zap size={24} strokeWidth={1.5} />} />
-                    <MenuItem icon={<LogIn size={24} strokeWidth={1.5} onClick={() => setOpenDialog("signIn")}/>} />
+                    {data ? <MenuItem icon={<LogOut size={24} strokeWidth={1.5} />} /> : <MenuItem icon={<LogIn size={24} strokeWidth={1.5} onClick={() => setOpenDialog("signIn")} />} />}
                     <MenuItem icon={<Settings size={24} strokeWidth={1.5} />} />
                 </MenuContainer>
             </div>
