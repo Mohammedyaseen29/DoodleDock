@@ -3,6 +3,8 @@ import localFont from "next/font/local";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import { SignInDialog } from "@/components/modals/SignIn";
+import { SignOutDialog } from "@/components/modals/SignOut";
+import { CreateRoom } from "@/components/modals/CreateRoom";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -29,6 +31,8 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <SignInDialog/>
+          <SignOutDialog/>
+          <CreateRoom/>
         </AuthProvider>
       </body>
     </html>

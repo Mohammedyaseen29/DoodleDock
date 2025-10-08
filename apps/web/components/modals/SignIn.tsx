@@ -5,7 +5,6 @@ import { useDialogStore } from "@/store/dialog-store"
 import logo from "@/public/DoodleDock.png"
 import Image from "next/image"
 import google from "@/public/google-icon-logo-svgrepo-com.svg";
-import { Button } from "../ui/button"
 import { signIn } from "next-auth/react"
 
 export function SignInDialog() {

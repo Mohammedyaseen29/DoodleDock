@@ -2,7 +2,7 @@ import {create} from "zustand"
 
 
 
-type dialogType = "signIn" | "createRoom" | "profile" | null;
+type dialogType = "signIn" | "signOut" | "createRoom" | "profile" | null;
 
 
 interface DialogStore {

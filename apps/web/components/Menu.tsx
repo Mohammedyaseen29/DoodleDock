@@ -31,8 +31,8 @@ export function DoodleMenu() {
                         }
                     />
                     <MenuItem icon={<Home size={24} strokeWidth={1.5} />} />
-                    <MenuItem icon={<Zap size={24} strokeWidth={1.5} />} />
-                    {data ? <MenuItem icon={<LogOut size={24} strokeWidth={1.5} />} /> : <MenuItem icon={<LogIn size={24} strokeWidth={1.5} onClick={() => setOpenDialog("signIn")} />} />}
+                    <MenuItem icon={<Zap size={24} strokeWidth={1.5} onClick={()=>setOpenDialog("createRoom")}/>} />
+                    {data ? <MenuItem icon={<LogOut size={24} strokeWidth={1.5} onClick={()=>setOpenDialog("signOut")} />} /> : <MenuItem icon={<LogIn size={24} strokeWidth={1.5} onClick={() => setOpenDialog("signIn")} />} />}
                     <MenuItem icon={<Settings size={24} strokeWidth={1.5} />} />
                 </MenuContainer>
             </div>
