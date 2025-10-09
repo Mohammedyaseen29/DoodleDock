@@ -1,3 +1,4 @@
+"use client"
 import React from 'react'
 import {
     DropdownMenu,
@@ -7,19 +8,25 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Button } from './ui/button'
+import { ChevronDown } from 'lucide-react'
 
 export default function RoomDropDown() {
     return (
         <div>
             <DropdownMenu>
-                <DropdownMenuTrigger>
-                    <button className="bg-white/10 backdrop-blur-md text-black px-4 py-2 rounded-lg ring-1 ring-inset ring-white/20 shadow-lg transition duration-300 hover:bg-white/20">👀 What do you want to do?</button>
+                <DropdownMenuTrigger asChild>
+                    <div className='flex justify-center items-center'>
+                        <Button variant={'outline'}>👀 What do you want to do? 
+                        <ChevronDown className='w-5 h-5'/>
+                        </Button>
+                    </div>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                     <DropdownMenuLabel>⚙️ Choose an action</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>👾 Create a new room</DropdownMenuItem>
-                    <DropdownMenuItem>📍 Join an existing room</DropdownMenuItem>
+                    <DropdownMenuItem className='cursor-pointer'>👾 Create a new room</DropdownMenuItem>
+                    <DropdownMenuItem className='cursor-pointer'>📍 Join an existing room</DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>

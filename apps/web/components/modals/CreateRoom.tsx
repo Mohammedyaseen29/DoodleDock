@@ -4,12 +4,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useDialogStore } from "@/store/dialog-store"
 import logo from "@/public/DoodleDock.png"
 import Image from "next/image"
-import google from "@/public/google-icon-logo-svgrepo-com.svg";
-import { signIn } from "next-auth/react"
 import RoomDropDown from "../RoomDropDown"
+import { useState } from "react"
 
 export function CreateRoom() {
-    const { openDialog, setOpenDialog } = useDialogStore()
+    const { openDialog, setOpenDialog } = useDialogStore();
+    const [createRoom,setCreateRoom] = useState("");
+
 
     return (
         <Dialog
