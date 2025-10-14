@@ -6,10 +6,12 @@ import logo from "@/public/DoodleDock.png"
 import Image from "next/image"
 import RoomDropDown from "../RoomDropDown"
 import { useState } from "react"
+import CreateNewRoom from "../CreateNewRoom"
+import JoinExistingRoom from "../JoinExistingRoom"
 
 export function CreateRoom() {
     const { openDialog, setOpenDialog } = useDialogStore();
-    const [createRoom,setCreateRoom] = useState("");
+    const [action,setAction] = useState("");
 
 
     return (
@@ -28,7 +30,11 @@ export function CreateRoom() {
                     <DialogDescription className="text-center mt-0.5">Start fresh with a new room or join your friends where the doodles are already happening!</DialogDescription>
                 </DialogHeader>
                 <div className="mt-4">
-                    <RoomDropDown/>
+                    <RoomDropDown action={action} setAction={setAction}/>
+                </div>
+                <div className="mt-1">
+                    {action === "createRoom" && <CreateNewRoom/>}
+                    {action === "joinRoom" && <JoinExistingRoom />}
                 </div>
             </DialogContent>
         </Dialog>
