@@ -10,18 +10,52 @@ import { useRouter, useSearchParams } from "next/navigation";
 interface RemoteCursor {
     userId: string;
     userEmail: string;
+    userName: string;
     x: number;
     y: number;
+    color: string;
 }
 
+const DEFAULT_ROOM = "public-canvas";
+
+// Generate a consistent color for each user based on their ID
+function getUserColor(userId: string): string {
+    const colors = [
+        '#FF6B6B', // Red
+        '#4ECDC4', // Turquoise
+        '#45B7D1', // Blue
+        '#FFA07A', // Light Salmon
+        '#98D8C8', // Mint
+        '#F7DC6F', // Yellow
+        '#BB8FCE', // Purple
+        '#85C1E2', // Sky Blue
+        '#F8B739', // Orange
+        '#52B788', // Green
+        '#E76F51', // Burnt Orange
+        '#2A9D8F', // Teal
+        '#E9C46A', // Gold
+        '#F4A261', // Sandy Brown
+        '#8338EC', // Violet
+    ];
+    
+    // Generate consistent index from userId
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+        hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % colors.length;
+    //@ts-ignore
+    return colors[index];
+}
 
 export default function CanvasBoard() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const roomName = searchParams.get('room');
-    const { data: session } = useSession();
+    const roomNameParam = searchParams.get('room');
+    const { data: session, status } = useSession();
     
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const [tool, setTool] = useState("rect");
     const [shapes, setShapes] = useState<any[]>([]);
     const [drawing, setDrawing] = useState<any>(null);
@@ -32,6 +66,9 @@ export default function CanvasBoard() {
     const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
     const [roomInfo, setRoomInfo] = useState<any>(null);
     const [userCount, setUserCount] = useState(0);
+    const [roomName, setRoomName] = useState<string>(roomNameParam || DEFAULT_ROOM);
+    const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
+    const lastCursorSend = useRef<number>(0);
 
     // WebSocket message handler
     const handleWebSocketMessage = useCallback((data: any) => {
@@ -47,6 +84,8 @@ export default function CanvasBoard() {
                     roomOwner: data.roomOwner,
                 });
                 setUserCount(data.userCount);
+                setHasJoinedRoom(true);
+                console.log('Successfully joined room:', data.roomName);
                 break;
 
             case 'canvas-state':
@@ -87,8 +126,10 @@ export default function CanvasBoard() {
                         [data.userId]: {
                             userId: data.userId,
                             userEmail: data.userEmail,
+                            userName: data.userName || data.userEmail.split('@')[0],
                             x: data.x,
                             y: data.y,
+                            color: getUserColor(data.userId),
                         }
                     }));
                 }
@@ -96,6 +137,7 @@ export default function CanvasBoard() {
 
             case 'user-joined':
                 setUserCount(data.userCount);
+                console.log('User joined:', data.userEmail);
                 break;
 
             case 'user-left':
@@ -105,18 +147,22 @@ export default function CanvasBoard() {
                     delete updated[data.userId];
                     return updated;
                 });
+                console.log('User left:', data.userEmail);
                 break;
 
             case 'message':
-                // Handle chat messages if needed
                 console.log('Chat message:', data.message);
                 break;
 
             case 'error':
                 console.error('WebSocket error:', data.message);
+                if (data.message === "Room not found" && roomName !== DEFAULT_ROOM) {
+                    console.log('Room not found, attempting to create...');
+                    createRoomAndJoin(roomName);
+                }
                 break;
         }
-    }, [session]);
+    }, [session, roomName]);
 
     const {
         isConnected,
@@ -131,17 +177,85 @@ export default function CanvasBoard() {
         onMessage: handleWebSocketMessage,
     });
 
-    // Join room when connected and roomName is available
-    useEffect(() => {
-        if (isConnected && roomName && session?.user?.id) {
-            joinRoom(roomName);
+    // Create default room if it doesn't exist
+    const createDefaultRoom = async () => {
+        if (status !== 'authenticated' || !session?.user?.id) return;
+
+        try {
+            const checkResponse = await fetch(`/api/room/name/${DEFAULT_ROOM}`);
+            
+            if (checkResponse.status === 404) {
+                const createResponse = await fetch('/api/room', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ roomName: DEFAULT_ROOM }),
+                });
+
+                if (createResponse.ok) {
+                    console.log('Default room created successfully');
+                }
+            }
+        } catch (error) {
+            console.error('Error checking/creating default room:', error);
         }
-    }, [isConnected, roomName, session, joinRoom]);
+    };
+
+    const createRoomAndJoin = async (roomNameToCreate: string) => {
+        if (status !== 'authenticated' || !session?.user?.id) return;
+
+        try {
+            const response = await fetch('/api/room', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ roomName: roomNameToCreate }),
+            });
+
+            if (response.ok || response.status === 409) {
+                setTimeout(() => {
+                    if (isConnected) {
+                        joinRoom(roomNameToCreate);
+                    }
+                }, 500);
+            }
+        } catch (error) {
+            console.error('Error creating room:', error);
+        }
+    };
+
+    useEffect(() => {
+        const newRoomName = roomNameParam || DEFAULT_ROOM;
+        if (newRoomName !== roomName) {
+            setRoomName(newRoomName);
+            setHasJoinedRoom(false);
+        }
+    }, [roomNameParam]);
+
+    useEffect(() => {
+        if (isConnected && status === 'authenticated' && session?.user?.id && !hasJoinedRoom) {
+            const timer = setTimeout(() => {
+                console.log(`Attempting to join room: ${roomName}`);
+                joinRoom(roomName);
+            }, 500);
+
+            return () => clearTimeout(timer);
+        }
+    }, [isConnected, status, session?.user?.id, roomName, hasJoinedRoom]);
+
+    useEffect(() => {
+        if (status === 'authenticated' && session?.user?.id && roomName === DEFAULT_ROOM) {
+            createDefaultRoom();
+        }
+    }, [status, session?.user?.id, roomName]);
 
     // Drawing functions
     function drawShape(ctx: CanvasRenderingContext2D, shape: any, preview = false) {
         ctx.strokeStyle = preview ? "#888" : "#000";
         ctx.fillStyle = "#000";
+        ctx.lineWidth = 2;
         ctx.beginPath();
 
         if (shape.type === "rect") {
@@ -179,10 +293,78 @@ export default function CanvasBoard() {
         ctx.stroke();
     }
 
-    // Render canvas
+    // Draw custom cursor
+    function drawCursor(ctx: CanvasRenderingContext2D, cursor: RemoteCursor) {
+        // Draw cursor pointer
+        ctx.save();
+        ctx.fillStyle = cursor.color;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        
+        // Cursor arrow path
+        ctx.beginPath();
+        ctx.moveTo(cursor.x, cursor.y);
+        ctx.lineTo(cursor.x + 3, cursor.y + 15);
+        ctx.lineTo(cursor.x + 8, cursor.y + 12);
+        ctx.lineTo(cursor.x + 13, cursor.y + 20);
+        ctx.lineTo(cursor.x + 16, cursor.y + 18);
+        ctx.lineTo(cursor.x + 11, cursor.y + 10);
+        ctx.lineTo(cursor.x + 18, cursor.y + 9);
+        ctx.closePath();
+        
+        ctx.fill();
+        ctx.stroke();
+        
+        // Draw user name label
+        const label = cursor.userName;
+        const padding = 6;
+        const fontSize = 12;
+        
+        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+        const textWidth = ctx.measureText(label).width;
+        
+        // Label background
+        const labelX = cursor.x + 20;
+        const labelY = cursor.y + 8;
+        const labelHeight = fontSize + padding * 2;
+        
+        ctx.fillStyle = cursor.color;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 2;
+        
+        // Rounded rectangle for label
+        const radius = 4;
+        ctx.beginPath();
+        ctx.moveTo(labelX + radius, labelY);
+        ctx.lineTo(labelX + textWidth + padding * 2 - radius, labelY);
+        ctx.quadraticCurveTo(labelX + textWidth + padding * 2, labelY, labelX + textWidth + padding * 2, labelY + radius);
+        ctx.lineTo(labelX + textWidth + padding * 2, labelY + labelHeight - radius);
+        ctx.quadraticCurveTo(labelX + textWidth + padding * 2, labelY + labelHeight, labelX + textWidth + padding * 2 - radius, labelY + labelHeight);
+        ctx.lineTo(labelX + radius, labelY + labelHeight);
+        ctx.quadraticCurveTo(labelX, labelY + labelHeight, labelX, labelY + labelHeight - radius);
+        ctx.lineTo(labelX, labelY + radius);
+        ctx.quadraticCurveTo(labelX, labelY, labelX + radius, labelY);
+        ctx.closePath();
+        
+        ctx.fill();
+        ctx.stroke();
+        
+        // Label text
+        ctx.fillStyle = 'white';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, labelX + padding, labelY + labelHeight / 2);
+        
+        ctx.restore();
+    }
+
+    // Render main canvas
     useEffect(() => {
-        const canvas = canvasRef.current!;
-        const ctx = canvas.getContext("2d")!;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         shapes.forEach((s, i) => {
@@ -190,6 +372,7 @@ export default function CanvasBoard() {
             if (selectedShapes.includes(i)) {
                 ctx.setLineDash([5, 5]);
                 ctx.strokeStyle = "blue";
+                ctx.lineWidth = 2;
                 if (s.type === "rect") ctx.strokeRect(s.x, s.y, s.w, s.h);
                 else if (s.type === "circle")
                     ctx.strokeRect(s.x - s.r, s.y - s.r, s.r * 2, s.r * 2);
@@ -210,25 +393,35 @@ export default function CanvasBoard() {
             const { x, y, w, h } = selectionBox;
             ctx.setLineDash([5, 5]);
             ctx.strokeStyle = "blue";
+            ctx.lineWidth = 2;
             ctx.strokeRect(x, y, w, h);
             ctx.setLineDash([]);
         }
+    }, [shapes, drawing, selectedShapes, selectionBox]);
 
-        // Draw remote cursors
+    // Render cursor overlay canvas
+    useEffect(() => {
+        const cursorCanvas = cursorCanvasRef.current;
+        if (!cursorCanvas) return;
+        
+        const ctx = cursorCanvas.getContext("2d");
+        if (!ctx) return;
+        
+        ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+        
+        // Draw all remote cursors
         Object.values(remoteCursors).forEach((cursor) => {
-            ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
-            ctx.beginPath();
-            ctx.arc(cursor.x, cursor.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-            ctx.font = "12px Arial";
-            ctx.fillText(cursor.userEmail, cursor.x + 10, cursor.y - 10);
+            drawCursor(ctx, cursor);
         });
-    }, [shapes, drawing, selectedShapes, selectionBox, remoteCursors]);
+    }, [remoteCursors]);
 
     // Mouse handlers
     function handleMouseDown(e: React.MouseEvent) {
+        if (status !== 'authenticated') {
+            console.warn('Must be authenticated to draw');
+            return;
+        }
+
         const rect = canvasRef.current!.getBoundingClientRect();
         const startX = e.clientX - rect.left;
         const startY = e.clientY - rect.top;
@@ -255,9 +448,11 @@ export default function CanvasBoard() {
         const currX = e.clientX - rect.left;
         const currY = e.clientY - rect.top;
 
-        // Send cursor position
-        if (isConnected) {
+        // Throttle cursor updates to every 50ms
+        const now = Date.now();
+        if (isConnected && hasJoinedRoom && now - lastCursorSend.current > 50) {
             sendCursorMove(currX, currY);
+            lastCursorSend.current = now;
         }
 
         if (!drawing) return;
@@ -296,8 +491,7 @@ export default function CanvasBoard() {
                 setUndoStack([...undoStack, prev]);
                 setRedoStack([]);
                 
-                // Send to server
-                if (isConnected) {
+                if (isConnected && hasJoinedRoom) {
                     sendCanvasDraw(drawing, true);
                 }
                 
@@ -340,7 +534,6 @@ export default function CanvasBoard() {
         setDrawing(null);
     }
 
-    // Keyboard shortcuts
     useEffect(() => {
         function handleKeyDown(e: KeyboardEvent) {
             if (e.key === "Backspace" && selectedShapes.length > 0) {
@@ -349,7 +542,7 @@ export default function CanvasBoard() {
                     setUndoStack([...undoStack, prev]);
                     setRedoStack([]);
                     
-                    if (isConnected) {
+                    if (isConnected && hasJoinedRoom) {
                         sendCanvasDelete(selectedShapes);
                     }
                     
@@ -364,7 +557,7 @@ export default function CanvasBoard() {
         }
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [selectedShapes, undoStack, redoStack, isConnected]);
+    }, [selectedShapes, undoStack, redoStack, isConnected, hasJoinedRoom]);
 
     function handleUndo() {
         if (undoStack.length > 0) {
@@ -372,7 +565,7 @@ export default function CanvasBoard() {
             setRedoStack([...redoStack, shapes]);
             if (prevShapes !== undefined) {
                 setShapes(prevShapes);
-                if (isConnected) {
+                if (isConnected && hasJoinedRoom) {
                     sendCanvasUndo(prevShapes);
                 }
             }
@@ -386,7 +579,7 @@ export default function CanvasBoard() {
             setUndoStack([...undoStack, shapes]);
             if (nextShapes !== undefined) {
                 setShapes(nextShapes);
-                if (isConnected) {
+                if (isConnected && hasJoinedRoom) {
                     sendCanvasRedo(nextShapes);
                 }
             }
@@ -395,9 +588,9 @@ export default function CanvasBoard() {
     }
 
     return (
-        <div className="flex flex-col items-center h-screen">
+        <div className="flex flex-col items-center h-screen bg-gray-50">
             {/* Header */}
-            <div className="flex items-center gap-2 mb-4 fixed w-full z-10 bg-white/80 backdrop-blur-sm p-2">
+            <div className="flex items-center gap-2 mb-4 fixed w-full z-10 bg-white/90 backdrop-blur-sm p-2 border-b shadow-sm">
                 <div className="flex-none">
                     <DoodleMenu/>
                 </div>
@@ -405,27 +598,82 @@ export default function CanvasBoard() {
                     <Toolbar tool={tool} setTool={setTool} />
                 </div>
                 <div className="ml-auto mr-4 flex items-center gap-4">
-                    {roomInfo && (
-                        <div className="text-sm">
-                            <span className="font-semibold">Room: {roomInfo.roomName}</span>
-                            <span className="ml-2 text-gray-500">👥 {userCount}</span>
+                    {status === 'authenticated' && (
+                        <>
+                            {roomInfo && (
+                                <div className="text-sm flex items-center gap-2">
+                                    <span className="font-semibold">{roomInfo.roomName}</span>
+                                    <span className="text-gray-500 flex items-center gap-1">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                        </svg>
+                                        {userCount}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
+                                <div 
+                                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
+                                />
+                                <span className="text-xs font-medium text-gray-700">
+                                    {isConnected ? (hasJoinedRoom ? 'Live' : 'Connecting...') : 'Offline'}
+                                </span>
+                            </div>
+                        </>
+                    )}
+                    {status === 'unauthenticated' && (
+                        <div className="text-sm text-amber-600 px-3 py-1.5 rounded-full bg-amber-50">
+                            Sign in to collaborate
                         </div>
                     )}
-                    <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} 
-                         title={isConnected ? 'Connected' : 'Disconnected'} />
                 </div>
             </div>
 
-            {/* Canvas */}
-            <canvas
-                ref={canvasRef}
-                width={1800}
-                height={1500}
-                className="cursor-crosshair mt-16"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-            />
+            {/* Canvas Container */}
+            <div className="relative mt-16">
+                {/* Main drawing canvas */}
+                <canvas
+                    ref={canvasRef}
+                    width={1800}
+                    height={1500}
+                    className="cursor-crosshair border border-gray-200 rounded-lg shadow-lg bg-white"
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                />
+                
+                {/* Cursor overlay canvas */}
+                <canvas
+                    ref={cursorCanvasRef}
+                    width={1800}
+                    height={1500}
+                    className="absolute top-0 left-0 pointer-events-none"
+                    style={{ zIndex: 10 }}
+                />
+            </div>
+
+            {/* Active users indicator */}
+            {Object.keys(remoteCursors).length > 0 && (
+                <div className="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 max-w-xs">
+                    <div className="text-xs font-semibold text-gray-600 mb-2">Active Users</div>
+                    <div className="space-y-1">
+                        {Object.values(remoteCursors).slice(0, 5).map((cursor) => (
+                            <div key={cursor.userId} className="flex items-center gap-2 text-sm">
+                                <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: cursor.color }}
+                                />
+                                <span className="text-gray-700 truncate">{cursor.userName}</span>
+                            </div>
+                        ))}
+                        {Object.keys(remoteCursors).length > 5 && (
+                            <div className="text-xs text-gray-500 pl-5">
+                                +{Object.keys(remoteCursors).length - 5} more
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

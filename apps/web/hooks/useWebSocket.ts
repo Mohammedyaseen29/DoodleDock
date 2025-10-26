@@ -8,7 +8,7 @@ interface UseWebSocketProps {
 }
 
 export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebSocketProps = {}) {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const wsRef = useRef<WebSocket | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const [currentRoom, setCurrentRoom] = useState<string | null>(null);
@@ -16,31 +16,46 @@ export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebS
     const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
     const reconnectAttemptsRef = useRef(0);
     const maxReconnectAttempts = 5;
+    const isConnectingRef = useRef(false);
+    const tokenRef = useRef<string | null>(null);
 
     const connect = useCallback(async () => {
-        if (!session?.user?.id || wsRef.current?.readyState === WebSocket.OPEN) {
+        // Prevent multiple simultaneous connection attempts
+        if (isConnectingRef.current || wsRef.current?.readyState === WebSocket.OPEN) {
             return;
         }
 
-        try {
-            // Get WebSocket token
-            const response = await fetch('/api/ws-token', {
-                method: 'POST',
-            });
+        // Check if session is authenticated
+        if (status !== 'authenticated' || !session?.user?.id) {
+            console.log('Session not authenticated, skipping WebSocket connection');
+            return;
+        }
 
-            if (!response.ok) {
-                throw new Error('Failed to get WebSocket token');
+        isConnectingRef.current = true;
+
+        try {
+            // Get WebSocket token only if we don't have one or it's expired
+            if (!tokenRef.current) {
+                const response = await fetch('/api/ws-token', {
+                    method: 'POST',
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to get WebSocket token');
+                }
+
+                const { token } = await response.json();
+                tokenRef.current = token;
             }
 
-            const { token } = await response.json();
-
             // Connect to WebSocket server
-            const ws = new WebSocket(`ws://localhost:8080?token=${token}`);
+            const ws = new WebSocket(`ws://localhost:8080?token=${tokenRef.current}`);
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
                 setIsConnected(true);
                 reconnectAttemptsRef.current = 0;
+                isConnectingRef.current = false;
                 onConnected?.();
             };
 
@@ -56,13 +71,20 @@ export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebS
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                isConnectingRef.current = false;
             };
 
-            ws.onclose = () => {
-                console.log('WebSocket disconnected');
+            ws.onclose = (event) => {
+                console.log('WebSocket disconnected:', event.code, event.reason);
                 setIsConnected(false);
                 wsRef.current = null;
+                isConnectingRef.current = false;
                 onDisconnected?.();
+
+                // Clear token on close to get a fresh one on reconnect
+                if (event.code === 1006 || event.code === 1008) {
+                    tokenRef.current = null;
+                }
 
                 // Attempt reconnection
                 if (reconnectAttemptsRef.current < maxReconnectAttempts) {
@@ -72,14 +94,18 @@ export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebS
                     reconnectTimeoutRef.current = setTimeout(() => {
                         connect();
                     }, delay);
+                } else {
+                    console.log('Max reconnection attempts reached');
                 }
             };
 
             wsRef.current = ws;
         } catch (error) {
             console.error('Error connecting to WebSocket:', error);
+            isConnectingRef.current = false;
+            tokenRef.current = null; // Clear token on error
         }
-    }, [session, onMessage, onConnected, onDisconnected]);
+    }, [session, status, onMessage, onConnected, onDisconnected]);
 
     const disconnect = useCallback(() => {
         if (reconnectTimeoutRef.current) {
@@ -91,6 +117,8 @@ export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebS
         }
         setIsConnected(false);
         setCurrentRoom(null);
+        isConnectingRef.current = false;
+        tokenRef.current = null;
     }, []);
 
     const send = useCallback((data: any) => {
@@ -139,14 +167,25 @@ export function useWebSocket({ onMessage, onConnected, onDisconnected }: UseWebS
     }, [send]);
 
     useEffect(() => {
-        if (session?.user?.id) {
+        if (status === 'authenticated' && session?.user?.id) {
             connect();
+        } else if (status === 'unauthenticated') {
+            disconnect();
         }
 
         return () => {
             disconnect();
         };
-    }, [session, connect, disconnect]);
+    }, [status, session?.user?.id]);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (reconnectTimeoutRef.current) {
+                clearTimeout(reconnectTimeoutRef.current);
+            }
+        };
+    }, []);
 
     return {
         isConnected,
