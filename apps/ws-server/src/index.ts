@@ -3,7 +3,7 @@ import { db } from "@repo/db/client";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "@repo/common-config/config";
 import { IncomingMessage } from "http";
-import {   URL } from "url";
+import { URL } from "url";
 import { createServer } from "http";
 
 
@@ -30,41 +30,6 @@ const rooms: Record<string, CanvasRoom> = {};
 const THROTTLE_INTERVAL = 33;
 const pendingBroadcasts: Record<string, any> = {};
 
-// Create default public room
-async function ensureDefaultRoom() {
-  try {
-    const defaultRoom = await db.room.findUnique({
-      where: { name: "public-canvas" },
-    });
-
-    if (!defaultRoom) {
-      // Find or create a system user for the default room
-      let systemUser = await db.user.findFirst({
-        where: { email: "system@doodledock.com" },
-      });
-
-      if (!systemUser) {
-        systemUser = await db.user.create({
-          data: {
-            email: "system@doodledock.com",
-            name: "System",
-          },
-        });
-      }
-
-      await db.room.create({
-        data: {
-          name: "public-canvas",
-          userId: systemUser.id,
-        },
-      });
-
-      console.log("Default public-canvas room created");
-    }
-  } catch (error) {
-    console.error("Error ensuring default room:", error);
-  }
-}
 const server = createServer();
 const wss = new WebSocketServer({noServer:true});
 
@@ -103,7 +68,7 @@ const heartbeatInterval = setInterval(() => {
 
     if (extWs.isAlive === false) {
       console.log(
-        `💔 Terminating inactive connection for user: ${extWs.userEmail}`,
+        `Terminating inactive connection for user: ${extWs.userEmail}`,
       );
       return extWs.terminate();
     }
@@ -126,7 +91,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
   ws.userEmail = userEmail;
   ws.isAlive = true;
   console.log(`checking email : ${userEmail}`)
-  console.log(`✅ Authenticated user connected: ${userEmail} (${userId})`);
+  console.log(`Authenticated user connected: ${userEmail} (${userId})`);
 
   // Handle pong responses
   ws.on("pong", () => {
@@ -136,7 +101,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
   ws.on("message", async (message: any) => {
     try {
       const data = JSON.parse(message);
-      console.log(`📨 Message received: ${data.type} from ${ws.userEmail}`);
+      console.log(`Message received: ${data.type} from ${ws.userEmail}`);
 
       if (data.type === "join") {
         const { roomName } = data;
@@ -172,7 +137,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
                 },
               },
             });
-            console.log(`🆕 Room created: ${roomName} by ${ws.userEmail}`);
+            console.log(`Room created: ${roomName} by ${ws.userEmail}`);
           } catch (error: any) {
             if (error?.code === "P2002") {
               // Room was created by another process, fetch it
@@ -227,7 +192,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
           );
 
           if (existingClient) {
-            console.log(`♻️ Replacing existing connection for ${ws.userEmail}`);
+            console.log(`Replacing existing connection for ${ws.userEmail}`);
             existingClient.ws.close();
             //@ts-ignore
             rooms[room.id].clients = rooms[room.id].clients.filter(
@@ -282,7 +247,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
           
           console.log(
             //@ts-ignore
-            `👥 User ${ws.userEmail} joined room ${room.name} (${rooms[room.id].clients.length} users)`,
+            `User ${ws.userEmail} joined room ${room.name} (${rooms[room.id].clients.length} users)`,
           );
         } else {
           ws.send(JSON.stringify({ type: "error", message: "Room not found" }));
@@ -470,7 +435,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
   });
 
   ws.on("close", () => {
-    console.log(`👋 User disconnected: ${ws.userEmail}`);
+    console.log(`User disconnected: ${ws.userEmail}`);
 
     if (ws.roomId && rooms[ws.roomId]) {
       //@ts-ignore
@@ -488,7 +453,7 @@ wss.on("connection", (ws: ExtendedWebSocket, req: IncomingMessage) => {
     
       console.log(
         //@ts-ignore
-        `📊 Room ${ws.roomId} now has ${rooms[ws.roomId].clients.length} users`,
+        `Room ${ws.roomId} now has ${rooms[ws.roomId].clients.length} users`,
       );
       //@ts-ignore
       if (rooms[ws.roomId].clients.length === 0) {
@@ -531,7 +496,7 @@ function broadcastToRoom(roomId: string, message: any, sender?: WebSocket) {
 
   if (sentCount > 0) {
     console.log(
-      `📤 Broadcast ${message.type} to ${sentCount} clients in room ${roomId}`,
+      `Broadcast ${message.type} to ${sentCount} clients in room ${roomId}`,
     );
   }
 }
@@ -563,13 +528,4 @@ function throttledBroadcast(
 
 // Initialize server
 server.listen(8080);
-console.log("🚀 WebSocket server starting on ws://localhost:8080");
-
-ensureDefaultRoom()
-  .then(() => {
-    console.log("✅ WebSocket server ready");
-  })
-  .catch((error) => {
-    console.error("❌ Error initializing server:", error);
-  });
-
+console.log("WebSocket server starting on ws://localhost:8080");

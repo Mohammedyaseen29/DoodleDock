@@ -16,7 +16,7 @@ interface RemoteCursor {
     color: string;
 }
 
-const DEFAULT_ROOM = "public-canvas";
+// const DEFAULT_ROOM = "public-canvas";
 
 // Generate a consistent color for each user based on their ID
 function getUserColor(userId: string): string {
@@ -66,15 +66,22 @@ export default function CanvasBoard() {
     const [remoteCursors, setRemoteCursors] = useState<Record<string, RemoteCursor>>({});
     const [roomInfo, setRoomInfo] = useState<any>(null);
     const [userCount, setUserCount] = useState(0);
-    const [roomName, setRoomName] = useState<string>(roomNameParam || DEFAULT_ROOM);
+    const [roomName, setRoomName] = useState<string>(roomNameParam || "");
     const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
     const lastCursorSend = useRef<number>(0);
+    
+      const LOCAL_SHAPES_KEY = "localCanvasData";
+      const LOCAL_UNDO_KEY = "localUndoStack";
+      const LOCAL_REDO_KEY = "localRedoStack";
+      const LOCAL_ROOM_KEY = "lastRoomName";
+      const MAX_STACK_LENGTH = 20;
+    
 
     // WebSocket message handler
     const handleWebSocketMessage = useCallback((data: any) => {
         switch (data.type) {
             case 'authenticated':
-                console.log('Authenticated as:', data.userEmail);
+              console.log('Authenticated');
                 break;
 
             case 'joined':
@@ -86,6 +93,12 @@ export default function CanvasBoard() {
                 setUserCount(data.userCount);
                 setHasJoinedRoom(true);
                 console.log('Successfully joined room:', data.roomName);
+                localStorage.removeItem(LOCAL_SHAPES_KEY);
+                localStorage.removeItem(LOCAL_UNDO_KEY);
+                localStorage.removeItem(LOCAL_REDO_KEY);
+                setUndoStack([]);
+                setRedoStack([]);
+                localStorage.setItem(LOCAL_ROOM_KEY, data.roomName);
                 break;
 
             case 'canvas-state':
@@ -156,7 +169,7 @@ export default function CanvasBoard() {
 
             case 'error':
                 console.error('WebSocket error:', data.message);
-                if (data.message === "Room not found" && roomName !== DEFAULT_ROOM) {
+                if (data.message === "Room not found") {
                     console.log('Room not found, attempting to create...');
                     createRoomAndJoin(roomName);
                 }
@@ -177,33 +190,13 @@ export default function CanvasBoard() {
         onMessage: handleWebSocketMessage,
     });
 
-    // Create default room if it doesn't exist
-    const createDefaultRoom = async () => {
-        if (status !== 'authenticated' || !session?.user?.id) return;
-
-        try {
-            const checkResponse = await fetch(`/api/room/name/${DEFAULT_ROOM}`);
-            
-            if (checkResponse.status === 404) {
-                const createResponse = await fetch('/api/room', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ roomName: DEFAULT_ROOM }),
-                });
-
-                if (createResponse.ok) {
-                    console.log('Default room created successfully');
-                }
-            }
-        } catch (error) {
-            console.error('Error checking/creating default room:', error);
-        }
-    };
-
     const createRoomAndJoin = async (roomNameToCreate: string) => {
         if (status !== 'authenticated' || !session?.user?.id) return;
+        
+        if(!roomNameToCreate){
+            console.log('Room name is required');
+            return;
+        }
 
         try {
             const response = await fetch('/api/room', {
@@ -227,15 +220,17 @@ export default function CanvasBoard() {
     };
 
     useEffect(() => {
-        const newRoomName = roomNameParam || DEFAULT_ROOM;
+        const newRoomName = roomNameParam;
         if (newRoomName !== roomName) {
-            setRoomName(newRoomName);
-            setHasJoinedRoom(false);
+            if(newRoomName){
+                setRoomName(newRoomName);
+                setHasJoinedRoom(false);
+            }
         }
     }, [roomNameParam]);
 
     useEffect(() => {
-        if (isConnected && status === 'authenticated' && session?.user?.id && !hasJoinedRoom) {
+        if (isConnected && status === 'authenticated' && session?.user?.id && !hasJoinedRoom && roomName !== "") {
             const timer = setTimeout(() => {
                 console.log(`Attempting to join room: ${roomName}`);
                 joinRoom(roomName);
@@ -245,11 +240,39 @@ export default function CanvasBoard() {
         }
     }, [isConnected, status, session?.user?.id, roomName, hasJoinedRoom]);
 
-    useEffect(() => {
-        if (status === 'authenticated' && session?.user?.id && roomName === DEFAULT_ROOM) {
-            createDefaultRoom();
-        }
-    }, [status, session?.user?.id, roomName]);
+  const pushUndoStack = (newEntry: any[]) => { 
+    setUndoStack(prev => { 
+      const updated = [...prev, newEntry].slice(-MAX_STACK_LENGTH);
+      localStorage.setItem(LOCAL_UNDO_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }
+  const pushRedoStack = (newEntry: any[]) => {
+    setRedoStack(prev => {
+      const updated = [...prev, newEntry].slice(-MAX_STACK_LENGTH);
+      localStorage.setItem(LOCAL_REDO_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
+  const persistShapes = (s: any[]) => {
+    localStorage.setItem(LOCAL_SHAPES_KEY, JSON.stringify(s));
+  };
+  useEffect(() => {
+    const savedShapes = localStorage.getItem(LOCAL_SHAPES_KEY);
+    const savedUndo = localStorage.getItem(LOCAL_UNDO_KEY);
+    const savedRedo = localStorage.getItem(LOCAL_REDO_KEY);
+    if (savedShapes) setShapes(JSON.parse(savedShapes));
+    if (savedUndo) setUndoStack(JSON.parse(savedUndo));
+    if (savedRedo) setRedoStack(JSON.parse(savedRedo));
+  }, []);
+  
+  useEffect(() => {
+    if (!hasJoinedRoom) {
+      persistShapes(shapes);
+      localStorage.setItem(LOCAL_UNDO_KEY, JSON.stringify(undoStack));
+      localStorage.setItem(LOCAL_REDO_KEY, JSON.stringify(redoStack));
+    }
+  }, [shapes, undoStack, redoStack, hasJoinedRoom]);
 
     // Drawing functions
     function drawShape(ctx: CanvasRenderingContext2D, shape: any, preview = false) {
@@ -488,8 +511,9 @@ export default function CanvasBoard() {
         if (["rect", "circle", "line", "arrow", "pen"].includes(drawing.type)) {
             setShapes((prev) => {
                 const newShapes = [...prev, drawing];
-                setUndoStack([...undoStack, prev]);
+                pushUndoStack(prev);
                 setRedoStack([]);
+                localStorage.removeItem(LOCAL_REDO_KEY);
                 
                 if (isConnected && hasJoinedRoom) {
                     sendCanvasDraw(drawing, true);
@@ -539,8 +563,9 @@ export default function CanvasBoard() {
             if (e.key === "Backspace" && selectedShapes.length > 0) {
                 setShapes((prev) => {
                     const newShapes = prev.filter((_, i) => !selectedShapes.includes(i));
-                    setUndoStack([...undoStack, prev]);
+                    pushUndoStack(prev);
                     setRedoStack([]);
+                    localStorage.removeItem(LOCAL_REDO_KEY);
                     
                     if (isConnected && hasJoinedRoom) {
                         sendCanvasDelete(selectedShapes);
@@ -562,28 +587,36 @@ export default function CanvasBoard() {
     function handleUndo() {
         if (undoStack.length > 0) {
             const prevShapes = undoStack[undoStack.length - 1];
-            setRedoStack([...redoStack, shapes]);
+            pushRedoStack(shapes);
             if (prevShapes !== undefined) {
                 setShapes(prevShapes);
                 if (isConnected && hasJoinedRoom) {
                     sendCanvasUndo(prevShapes);
                 }
             }
-            setUndoStack(undoStack.slice(0, -1));
+          setUndoStack(u => { 
+            const updated = u.slice(0, -1);
+            localStorage.setItem(LOCAL_UNDO_KEY, JSON.stringify(updated));
+            return updated;
+          });
         }
     }
 
     function handleRedo() {
         if (redoStack.length > 0) {
             const nextShapes = redoStack[redoStack.length - 1];
-            setUndoStack([...undoStack, shapes]);
+            pushUndoStack(shapes);
             if (nextShapes !== undefined) {
                 setShapes(nextShapes);
                 if (isConnected && hasJoinedRoom) {
                     sendCanvasRedo(nextShapes);
                 }
             }
-            setRedoStack(redoStack.slice(0, -1));
+          setRedoStack(r => {
+            const updated = r.slice(0, -1);
+            localStorage.setItem(LOCAL_REDO_KEY, JSON.stringify(updated));
+            return updated;
+          });
         }
     }
 
@@ -613,10 +646,10 @@ export default function CanvasBoard() {
                             )}
                             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-100">
                                 <div 
-                                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
+                                    className={`w-2 h-2 rounded-full ${hasJoinedRoom ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
                                 />
                                 <span className="text-xs font-medium text-gray-700">
-                                    {isConnected ? (hasJoinedRoom ? 'Live' : 'Connecting...') : 'Offline'}
+                                    {hasJoinedRoom ? 'Live' : 'Offline'}
                                 </span>
                             </div>
                         </>
